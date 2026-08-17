@@ -1,8 +1,27 @@
-# 🎮 multiplayer-room-template
+# Multiplayer Room Template
 
-A starterpack for **real-time multiplayer browser games**: rooms with shareable invite links, a live lobby, and a server-authoritative game loop — bring your own game.
+A starter template for real-time multiplayer browser games. It implements the complete session layer that most multiplayer games need: creating and joining rooms through shareable links, a live lobby where players see each other arrive and leave, and a server-authoritative game lifecycle. Clone it, replace the placeholder game screen with your own game, and ship.
 
-Built with **Next.js + Socket.IO** running in a single Node process. No database, no accounts — rooms live in memory and die when empty.
+## Why this template exists
+
+Most multiplayer game tutorials start at rendering sprites and skip the hard part: getting multiple players into the same session reliably. This template is that hard part, extracted from a working game and packaged for reuse.
+
+## Features
+
+- Room creation with unguessable, URL-safe room codes
+- Invite flow: copy a link, a friend opens it, picks a name, and is in
+- Live lobby with presence updates as players join and leave
+- Reconnect handling: dropped clients rejoin their room automatically
+- Server-authoritative state: the server owns the room and the game state
+- A working start game and end game lifecycle, so the full loop runs out of the box
+- Emoji avatar per player, no accounts, no database
+
+## Tech stack
+
+- Next.js (App Router) and React for the UI
+- Socket.IO for realtime transport, with automatic reconnect
+- One Node.js process serving both HTTP (Next.js) and websockets (Socket.IO) through a custom server
+- In-memory state only: rooms live in a Map and disappear when the last player leaves
 
 ## Quick start
 
@@ -11,76 +30,169 @@ npm install
 npm run dev
 ```
 
-Open **http://localhost:3000**
+Open http://localhost:3000, then:
 
-1. **Create a room** → you get a random link like `/room/k7x2qm`
-2. **Share the link** (there's a copy button in the lobby)
-3. Anyone opening the link is **asked for a name**, then joins the same room
-4. The player list updates **in real-time** as people join / leave
-5. **Start game** → everyone switches to the game screen (a placeholder — yours goes there)
-6. **End game** → everyone lands back in the lobby, ready for another round
+1. Click "Create a room". You land on a URL like `/room/k7x2qm`.
+2. Copy the invite link from the lobby and send it to a friend, or open it in a second browser.
+3. Each player picks a name and enters the room. The lobby updates in real time.
+4. With two or more players, anyone clicks "Start game". Everyone switches to the game screen.
+5. On the placeholder game screen, click "End game" to send everyone back to the lobby.
 
-> Friends on the same network can join via your LAN IP, e.g. `http://192.168.x.x:3000/room/k7x2qm` (whitelisted automatically in dev — see `next.config.mjs`).
+Friends on the same network can join through your LAN IP, for example `http://192.168.1.20:3000/room/k7x2qm`. LAN origins are whitelisted automatically in development (see `next.config.mjs`), and tunnels such as ngrok can be added through the `ALLOWED_DEV_ORIGINS` environment variable.
 
-## Use it as a GitHub template
+## Using it as a GitHub template
 
-Push this folder to a repo, then in the repo settings tick **☑ Template repository**. Every new game = **Use this template → create repository** → clone → `npm install` → build your game.
+1. Push this repository to GitHub.
+2. In the repository settings, enable "Template repository".
+3. For every new game: click "Use this template", create a repository, clone it, run `npm install`, and start building.
 
-## What's inside
+## Project structure
 
-| Piece | File | Role |
+| Path | Role |
+| --- | --- |
+| `server.js` | Custom Node server: Next.js plus Socket.IO in one process. Owns all room state and the game lifecycle. Contains the marked GAME HOOK section where your game logic goes. |
+| `app/page.jsx` | Home page: create a room, or join by pasted link or code. |
+| `app/room/[id]/page.jsx` | Room route, a server component wrapper. |
+| `components/Room.jsx` | Lobby UI: name prompt, live player list, copy invite link, start game button. Renders the game component once a game is running. |
+| `components/Game.jsx` | Placeholder game screen. Replace this with your game. It receives the latest game state and your socket id as props. |
+| `lib/socket.js` | Client socket singleton with auto-reconnect. |
+| `lib/roomId.js` | URL-safe random room id generator, using an alphabet without ambiguous characters. |
+| `app/globals.css` | Lobby and shared styling. |
+| `next.config.mjs` | Development origin whitelist for LAN IPs and tunnels. |
+| `scripts/smoke-test.mjs` | End-to-end test of the full room lifecycle. |
+
+## How it works
+
+### Server-authoritative rooms
+
+The server keeps a Map of rooms in memory. A room is created when the first player joins its id, and deleted when the last player leaves. Every state change is broadcast to the room as `room-state` (the lobby roster) or `game-state` (game data). Clients never trust their own copy; they render what the server sends.
+
+### Connection lifecycle
+
+1. The client opens a room URL and is asked for a name.
+2. The client emits `join-room` with the room id and name. The server validates both, registers the player, assigns an emoji, and replies with an acknowledgement.
+3. The server broadcasts the updated `room-state` to everyone in the room.
+4. If the connection drops, Socket.IO reconnects and the client re-emits `join-room`. A repeat join from the same socket is treated as idempotent.
+5. `leave-room` and `disconnect` both remove the player, update the game roster if a game is running, and delete the room once it is empty.
+
+### The game seam
+
+`Room.jsx` watches `game-state`. While it is null, the lobby is shown. When `start-game` produces a state whose phase is not "lobby", `Room.jsx` renders `components/Game.jsx` instead. Setting the game state back to null on the server returns everyone to the lobby. Your game only needs to fit inside that contract.
+
+## Socket events
+
+| Event | Direction | Payload | Purpose |
+| --- | --- | --- | --- |
+| `join-room` | client to server (ack) | `{ roomId, name }` returns `{ ok, you, room }` or `{ ok: false, error }` | Join or create a room |
+| `leave-room` | client to server | none | Leave the current room (disconnect is handled too) |
+| `room-state` | server to room | `{ id, createdAt, maxPlayers, players[] }` | Lobby roster after every change |
+| `start-game` | client to server | none | Start a game, requires at least `MIN_PLAYERS` players |
+| `end-game` | client to server | none | End the game and return everyone to the lobby |
+| `game-state` | server to room | object or null | Authoritative game state; null means the room is in the lobby |
+
+## Configuration
+
+Constants at the top of `server.js`:
+
+| Constant | Default | Meaning |
 | --- | --- | --- |
-| Custom server | `server.js` | Next.js + Socket.IO in one process; room state in memory (server-authoritative). **GAME HOOK section is where your game logic goes.** |
-| Home | `app/page.jsx` | Create room (random id) or join by pasted link/code |
-| Room page | `app/room/[id]/page.jsx` | Server component wrapper |
-| Lobby UI | `components/Room.jsx` | Name prompt → socket join → live player list + copy-link + start button |
-| Game screen | `components/Game.jsx` | 🚧 **Placeholder** — rendered whenever `game-state.phase !== 'lobby'`. Replace with your game. |
-| Socket singleton | `lib/socket.js` | One client connection, auto-reconnect, re-joins on reconnect |
-| Room ids | `lib/roomId.js` | URL-safe random ids (no ambiguous characters) |
-| Smoke test | `scripts/smoke-test.mjs` | E2E: join, see each other, game start/end, leave, 9th player rejected |
+| `MAX_PLAYERS` | 8 | Hard cap per room |
+| `MIN_PLAYERS` | 2 | Players required to start a game; set to 1 for solo development |
+| `EMOJIS` | 24 entries | Avatar pool, one unique emoji per player |
+| `ROOM_ID_RE` | `/^[a-z0-9]{4,24}$/` | Validation rule for room ids |
 
-## Events (socket.io)
+Environment variables: `PORT` (default 3000), `HOSTNAME` (default 0.0.0.0), and `ALLOWED_DEV_ORIGINS` (comma-separated extra development origins, for tunnels).
 
-| Event | Direction | Payload |
-| --- | --- | --- |
-| `join-room` | client → server (ack) | `{ roomId, name }` → `{ ok, you, room }` or `{ ok: false, error }` |
-| `leave-room` | client → server | — (also handled automatically on disconnect) |
-| `room-state` | server → room | `{ id, createdAt, maxPlayers, players[] }` |
-| `start-game` | client → server | — (needs ≥ `MIN_PLAYERS` in the room) |
-| `end-game` | client → server | — (template placeholder; your game decides when it's over) |
-| `game-state` | server → room | your serialized game, or `null` when in the lobby |
+## Building your game
 
-Rules: rooms are created implicitly by the first join, capped at `MAX_PLAYERS` (8), and deleted when empty. Each player gets a (mostly) unique emoji avatar.
+All game work happens in two places: the GAME HOOK section of `server.js`, and `components/Game.jsx`.
 
-## Build your game (5 steps)
+### 1. Define the initial state
 
-1. **State** — in `server.js` → `createGame(room)`: return your initial authoritative state (turn order, positions, scores, seed…).
-2. **Serialization** — `serializeGame(room)`: control exactly what clients receive (hide other players' hands, etc.).
-3. **Actions** — register handlers next to the `GAME HOOK` comment, e.g.
-   ```js
-   socket.on('action', (payload) => {
-     const room = rooms.get(socket.data.roomId);
-     // validate → mutate room.game → broadcastGame(room.id)
-   });
-   ```
-4. **UI** — replace `components/Game.jsx`. It receives `gs` (latest game-state) and `myId`. Emit actions with `getSocket().emit(...)`.
-5. **Game over** — set `room.game = null` and call `broadcastGame(room.id)`; clients automatically return to the lobby, ready to start again.
+Edit `createGame(room)` in `server.js` to return your authoritative state: turn order, positions, scores, a map seed, whatever your game needs.
 
-Config knobs at the top of `server.js`: `MAX_PLAYERS`, `MIN_PLAYERS` (set to `1` to test solo), `EMOJIS`, `ROOM_ID_RE`.
+```js
+function createGame(room) {
+  return {
+    phase: 'playing',
+    turn: null,
+    players: [...room.players.values()].map((p) => ({
+      id: p.id,
+      name: p.name,
+      emoji: p.emoji,
+      score: 0,
+    })),
+  };
+}
+```
+
+### 2. Control what clients see
+
+`serializeGame(room)` decides exactly what is broadcast. Hide anything players should not know: other hands, fog of war, server secrets.
+
+### 3. Handle player actions
+
+Register events next to the GAME HOOK comment in `server.js`. Always validate before mutating: is the game in the right phase, is it this player's turn, is the move legal.
+
+```js
+socket.on('action', (payload) => {
+  const room = rooms.get(socket.data.roomId);
+  if (!room?.game) return;
+  // validate, mutate room.game, then broadcast
+  broadcastGame(room.id);
+});
+```
+
+### 4. Build the UI
+
+Replace `components/Game.jsx`. It receives `gs` (the latest game-state) and `myId` (your socket id). Send actions with `getSocket().emit('action', payload)`. Subscribe to additional broadcasts with `getSocket().on(...)` and unsubscribe in the effect cleanup.
+
+### 5. End the game
+
+Set `room.game = null` and call `broadcastGame(room.id)`. Every client automatically returns to the lobby and can start again.
+
+For realtime-heavy updates such as movement or cursor positions, prefer `socket.volatile.emit(...)` on the server and accept occasional packet loss instead of added latency.
 
 ## Scripts
 
+| Command | Description |
+| --- | --- |
+| `npm run dev` | Development server with hot reload and sockets |
+| `npm run build` | Production build |
+| `npm start` | Production server (on Windows, set `NODE_ENV=production` before running `node server.js`) |
+| `npm run smoke` | End-to-end smoke test; the dev server must be running |
+
+## Testing
+
+`scripts/smoke-test.mjs` connects real Socket.IO clients and verifies the whole loop:
+
+- Two players join a room and see each other in real time
+- `start-game` reaches every client with the game state
+- `end-game` returns every client to the lobby
+- Leaving removes the player for everyone
+- A ninth player is rejected when the room is full
+
+Run it with the server up:
+
 ```bash
-npm run dev     # dev server with HMR + sockets
-npm run build   # production build
-npm start       # production server (Linux/Mac; on Windows set NODE_ENV=production first)
-npm run smoke   # e2e test (server must be running)
+npm run smoke
 ```
 
-## Deploying
+## Deployment
 
-Needs a **persistent Node server** (websockets + in-memory rooms) — not serverless platforms like Vercel. Railway, Render, Fly.io, or any VPS works: `npm run build` then `npm start`. Scale beyond one instance by moving room state to Redis (`socket.io-redis` adapter).
+The custom server means this cannot run on purely serverless platforms such as Vercel, because websockets and in-memory state need a persistent process. Deploy to any Node host: Railway, Render, Fly.io, a VPS, or a container.
+
+```bash
+npm run build
+npm start
+```
+
+Set the `PORT` environment variable if your host requires it.
+
+### Scaling beyond one instance
+
+In-memory rooms tie all players of a room to one process. To run multiple instances, move room state to Redis and add the Socket.IO Redis adapter (`@socket.io/redis-adapter`) so broadcasts reach every instance. For prototypes and small games, a single instance is usually enough.
 
 ## License
 
-MIT — clone it, ship games with it.
+MIT. Use it for anything.
