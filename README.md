@@ -2,6 +2,11 @@
 
 A starter template for real-time multiplayer browser games. It implements the complete session layer that most multiplayer games need: creating and joining rooms through shareable links, a live lobby where players see each other arrive and leave, and a server-authoritative game lifecycle. Clone it, replace the placeholder game screen with your own game, and ship.
 
+<img width="1899" height="921" alt="image" src="https://github.com/user-attachments/assets/7fb3867c-7824-4ccf-90e6-4435ecac2033" />
+<img width="1892" height="923" alt="image" src="https://github.com/user-attachments/assets/3ef37814-4198-474d-b2de-ee9db86dbfeb" />
+
+
+
 ## Why this template exists
 
 Most multiplayer game tutorials start at rendering sprites and skip the hard part: getting multiple players into the same session reliably. This template is that hard part, extracted from a working game and packaged for reuse.
