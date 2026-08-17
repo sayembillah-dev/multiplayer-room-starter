@@ -101,7 +101,7 @@ Constants at the top of `server.js`:
 | `EMOJIS` | 24 entries | Avatar pool, one unique emoji per player |
 | `ROOM_ID_RE` | `/^[a-z0-9]{4,24}$/` | Validation rule for room ids |
 
-Environment variables: `PORT` (default 3000), `HOSTNAME` (default 0.0.0.0), and `ALLOWED_DEV_ORIGINS` (comma-separated extra development origins, for tunnels).
+Environment variables: `PORT` (default 3000), `HOST` (bind address, default 0.0.0.0; `HOSTNAME` is intentionally ignored because Git Bash exports it and can break localhost binding), and `ALLOWED_DEV_ORIGINS` (comma-separated extra development origins, for tunnels).
 
 ## Building your game
 

@@ -16,7 +16,10 @@ const next = require('next');
 const { Server } = require('socket.io');
 
 const dev = process.env.NODE_ENV !== 'production';
-const hostname = process.env.HOSTNAME || '0.0.0.0';
+// Bind address. We deliberately read HOST, not HOSTNAME: shells like Git Bash
+// export HOSTNAME=<computer-name>, which can resolve to a VM/VPN adapter and
+// make the server unreachable on localhost. Set HOST to override.
+const hostname = process.env.HOST || '0.0.0.0';
 const port = Number(process.env.PORT || 3000);
 
 const app = next({ dev, hostname, port });
@@ -171,6 +174,6 @@ app.prepare().then(async () => {
   });
 
   httpServer.listen(port, hostname, () => {
-    console.log(`▲ ready on http://localhost:${port}`);
+    console.log(`▲ ready on http://localhost:${port} (bound to ${hostname})`);
   });
 });
